@@ -1,10 +1,19 @@
+import os
+import sys
 import torch.nn as nn
 import torch
 from utils.math import *
+from utils.args import *
 
+sys.path.append(os.getcwd()+'/../transformer-encoder/')
+sys.path.append(os.getcwd()+'/../transformer-encoder/transformer/')
+
+import transformer.Constants as Constants
+from transformer.Layers import EncoderLayer
+from transformer.Models import Transformer, Encoder
 
 class DiscretePolicy(nn.Module):
-    def __init__(self, n, state_dim, action_num, hidden_size=(64, 32), activation='tanh'):
+    def __init__(self, n, state_dim, action_num, hidden_size=[128], activation='tanh'):
         super().__init__()
         self.n = n
         self.state_dim = state_dim
@@ -18,11 +27,19 @@ class DiscretePolicy(nn.Module):
         elif activation == 'sigmoid':
             self.activation = torch.sigmoid
 
+        # utilizing Transformer Encoder as hidden for Relational-MARL.
+        if args.rrl is True:
+            self.encoder_stacks = Encoder(d_model=state_dim, d_inner=64, d_word_vec=state_dim, n_position=self.n,
+                n_layers=2, n_head=4, d_k=16, d_v=16, dropout=0.05)
+
+        # mlp as hidden.
+        # only use 1 layer.
         self.affine_layers = nn.ModuleList()
         last_dim = state_dim*n
-        for i,nh in enumerate(hidden_size):
+        for nh in hidden_size:
             self.affine_layers.append(nn.Linear(last_dim, nh) )
             last_dim = nh
+        set_init(self.affine_layers)
 
         self.action_hiddens = nn.ModuleList()
         self.action_heads = nn.ModuleList()
@@ -30,16 +47,21 @@ class DiscretePolicy(nn.Module):
             self.action_hiddens.append( nn.Linear(last_dim, int(last_dim/2)) )
             self.action_heads.append( nn.Linear(int(last_dim/2), action_num ) )
         
-        set_init(self.affine_layers)
         set_init(self.action_hiddens)
         set_init(self.action_heads)
 
     def forward(self, x):
         action_prob = []
         # print(x)
+
+        # utilizing Transformer Encoder as hidden for Relational-MARL.
+        if args.rrl is True:
+            x, _ = self.encoder_stacks.forward(x, src_mask = None)
+        # mlp as hidden.
         x = x.view(x.shape[0],-1)
         # print(x)
         # exit()
+
         for l in self.affine_layers:
             x = self.activation(l(x))        
 

@@ -17,9 +17,18 @@ from plot_logger import plot_logger
 logplot_path = os.path.join(assets_dir(), 'learned_models/')
 log_names = glob(logplot_path+'logplot*.pkl')
 
+iterations = []
+r_mins = []
+r_maxs = []
+r_avgs = []
+
 for name in log_names:
     with open(os.path.join(name), "rb") as f:
         logplot = pickle.load(f)
+        iterations.append(logplot["Iterations"])
+        r_mins.append(logplot["Min Rewards"])
+        r_maxs.append(logplot["Max Rewards"])
+        r_avgs.append(logplot["Avg Rewards"])
 
 linestyle = ['-', '--', ':', '-.', '-']
 # color = ["#3778bf", "#feb308", "red", "green", "#ff7b00"]
@@ -32,9 +41,9 @@ plt.figure(figsize=(6.4, 4.8))
 sns.set(font_scale=10.0)
 sns.set(style="whitegrid")
 
-sns.tsplot(time=logplot["Iterations"], data=logplot["Min Rewards"], color=color[0], linestyle=linestyle[0], condition="Min Rewards")
-sns.tsplot(time=logplot["Iterations"], data=logplot["Max Rewards"], color=color[1], linestyle=linestyle[0], condition="Max Rewards")
-sns.tsplot(time=logplot["Iterations"], data=logplot["Avg Rewards"], color=color[2], linestyle=linestyle[0], condition="Avg Rewards")
+sns.tsplot(time=logplot["Iterations"], data=r_mins, color=color[0], linestyle=linestyle[0], condition="Min Rewards")
+sns.tsplot(time=logplot["Iterations"], data=r_maxs, color=color[1], linestyle=linestyle[0], condition="Max Rewards")
+sns.tsplot(time=logplot["Iterations"], data=r_avgs, color=color[2], linestyle=linestyle[0], condition="Avg Rewards")
 # plt.xlim((0, 50))
 # plt.ylim((-300, 150))
 # ax.set_xticks(range(0, 251, 10))
