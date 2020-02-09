@@ -5,19 +5,20 @@ import torch
 from utils.math import *
 from utils.args import *
 
-# sys.path.append(os.getcwd()+'/../transformer-encoder/')
-# sys.path.append(os.getcwd()+'/../transformer-encoder/transformer/')
+sys.path.append(os.getcwd()+'/../transformer-encoder/')
+sys.path.append(os.getcwd()+'/../transformer-encoder/transformer/')
 
-# import transformer.Constants as Constants
-# from transformer.Layers import EncoderLayer
-# from transformer.Models import Transformer, Encoder
+import transformer.Constants as Constants
+from transformer.Layers import EncoderLayer
+from transformer.Models import Transformer, Encoder
 
 log_protect = 1e-5
 multinomial_protect = 1e-10
 
 class DiscretePolicy(nn.Module):
-    def __init__(self, n, state_dim, action_num, hidden_size=[128], activation='tanh'):
+    def __init__(self, dec_agents, n, state_dim, action_num, hidden_size=[1024,512,512,256,256,256], activation='tanh'):
         super().__init__()
+        self.dec_agents = dec_agents
         self.n = n
         self.state_dim = state_dim
         self.action_num = action_num
@@ -32,25 +33,30 @@ class DiscretePolicy(nn.Module):
 
         # utilizing Transformer Encoder as hidden for Relational-MARL.
         if args.rrl is True:
-            # self.encoder_stacks = Encoder(d_model=state_dim, d_inner=64, d_word_vec=state_dim, n_position=self.n,
-            #     n_layers=2, n_head=6, d_k=16, d_v=16, dropout=0.05)
-            self.encoder_layer = nn.TransformerEncoderLayer(d_model=state_dim, nhead=1)
-            self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=4)
+            self.encoder_stacks = Encoder(d_model=state_dim, d_inner=64, d_word_vec=state_dim, n_position=self.n,
+                n_layers=2, n_head=4, d_k=64, d_v=64, dropout=0.1)
+            # self.encoder_layer = nn.TransformerEncoderLayer(d_model=state_dim, nhead=1)
+            # self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=4)
 
         # mlp as hidden.
         # only use 1 layer.
         self.affine_layers = nn.ModuleList()
-        last_dim = state_dim if args.rrl is True else state_dim*n
+        # last_dim = state_dim if args.rrl is True else state_dim*n
+        last_dim = state_dim*n
+        # print(last_dim)
         for nh in hidden_size:
             self.affine_layers.append(nn.Linear(last_dim, nh) )
             last_dim = nh
         set_init(self.affine_layers)
+        # print(last_dim)
 
         self.action_hiddens = nn.ModuleList()
         self.action_heads = nn.ModuleList()
         for i in range(n):
             self.action_hiddens.append( nn.Linear(last_dim, int(last_dim/2)) )
             self.action_heads.append( nn.Linear(int(last_dim/2), action_num ) )
+            if self.dec_agents is True:
+                break
         
         set_init(self.action_hiddens)
         set_init(self.action_heads)
@@ -61,13 +67,13 @@ class DiscretePolicy(nn.Module):
 
         # utilizing Transformer Encoder as hidden for Relational-MARL.
         if args.rrl is True:
-            # x, _ = self.encoder_stacks.forward(x, src_mask = None)
-            x = self.transformer_encoder(x)
+            x, _ = self.encoder_stacks.forward(x, src_mask = None)
+            # x = self.transformer_encoder(x)
             # # max aggregation.
             # print(x.shape)
 
             # x = (torch.max(x,1)).values
-            x = torch.sum(x,1)
+            # x = torch.sum(x,1)
             # print(x.shape)
         # mlp as hidden.
         x = x.view(x.shape[0],-1)
@@ -85,6 +91,8 @@ class DiscretePolicy(nn.Module):
             # print(a)
             # exit()
             action_prob.append(a)
+            if self.dec_agents is True:
+                break
         # print(action_prob)
         # exit()
         return action_prob
@@ -96,6 +104,8 @@ class DiscretePolicy(nn.Module):
             action_prob[i] += multinomial_protect
             action = action_prob[i].multinomial(1)
             actions.append(action.item())
+            if self.dec_agents is True:
+                break
         # print(actions)
         # exit()
         return actions
@@ -107,12 +117,14 @@ class DiscretePolicy(nn.Module):
         return kl.sum(1, keepdim=True)
 
     def get_log_prob(self, x, actions):
+        # print(x.shape)
         action_prob = self.forward(x)
         # print(action_prob[0].shape)
-
+        # print(len(action_prob))
+        # print(action_prob[0].shape)
+        # exit()
         action_prob = torch.stack(action_prob)
         action_prob.transpose_(0,1)
-
         actions = actions.unsqueeze(2)
         # actions.transpose_(0,1)
         # print(actions.shape)
@@ -128,6 +140,29 @@ class DiscretePolicy(nn.Module):
         # print(choice.shape, choice)
         choice = torch.prod(choice, dim=1)
         # print(choice.shape, choice)
+        # exit()
+        return torch.log(choice)
+
+    def get_agent_i_log_prob(self, i, x, actions):
+        # print(x.shape)
+        action_prob = self.forward(x)
+        # print(action_prob[0].shape)
+        # print(len(action_prob))
+        # print(action_prob[0].shape)
+        # exit()
+        action_prob = action_prob[0].unsqueeze(1)
+        # print(action_prob.shape)
+        
+        actions = actions[:,i]
+        # print(actions.shape)
+        actions = actions.unsqueeze(1)
+        actions = actions.unsqueeze(2)
+        # print(actions.shape)
+        choice = action_prob.gather(2, actions.long())+log_protect
+        # print(choice.shape)
+        choice = choice.squeeze(1)
+        # print(choice.shape)
+        # print(choice)
         # exit()
         return torch.log(choice)
 

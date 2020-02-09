@@ -50,23 +50,38 @@ np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 env.seed(args.seed)
 
+p_nets = []
+v_nets = []
+p_opts = []
+v_opts = []
+
 """define actor and critic"""
 if args.model_path is None:
     if is_disc_action:
-        policy_net = DiscretePolicy(env.n_agents, state_dim, env.action_space[0].n)
+        for i in range(env.n_agents):
+            p_nets.append(DiscretePolicy(args.dec_agents, env.n_agents, state_dim, env.action_space[0].n))
+            v_nets.append(Value(env.n_agents, state_dim))
+            # add only one policy and value networks if using team unified network settings.
+            if args.dec_agents is False:
+                break
     else:
         policy_net = Policy(state_dim, env.action_space[0].n, log_std=args.log_std)
-    value_net = Value(env.n_agents, state_dim)
 else:
-    policy_net, value_net, running_state = pickle.load(open(args.model_path, "rb"))
-policy_net.to(device)
-value_net.to(device)
+    p_nets, v_nets, running_state = pickle.load(open(args.model_path, "rb"))
 
-optimizer_policy = torch.optim.Adam(policy_net.parameters(), lr=args.learning_rate)
-optimizer_value = torch.optim.Adam(value_net.parameters(), lr=args.learning_rate*2)
+for i in range(env.n_agents):
+    p_nets[i].to(device)
+    v_nets[i].to(device)
+    p_opts.append(torch.optim.Adam(p_nets[i].parameters(), lr=args.learning_rate))
+    v_opts.append(torch.optim.Adam(v_nets[i].parameters(), lr=args.learning_rate))
+    if args.dec_agents is False:
+        break
+
+# print(p_nets, v_nets)
+# exit()
 
 """create agent"""
-agent = Agent(env, policy_net, device, running_state=running_state, render=args.render, num_threads=args.num_threads)
+agent = Agent(env, p_nets, device, running_state=running_state, render=args.render, num_threads=args.num_threads)
 
 
 def update_params(batch, i_iter):
@@ -74,22 +89,56 @@ def update_params(batch, i_iter):
     actions = torch.from_numpy(np.stack(batch.action)).to(dtype).to(device)
     rewards = torch.from_numpy(np.stack(batch.reward)).to(dtype).to(device)
     masks = torch.from_numpy(np.stack(batch.mask)).to(dtype).to(device)
+
+    values = []
+    fixed_log_probs = []
     with torch.no_grad():
         # print(states.shape)
-        values = value_net(states)
-        # print(values.shape)
+        # print(actions.shape)
+        # print(masks.shape)
         # exit()
-        fixed_log_probs = policy_net.get_log_prob(states, actions)
+        if args.dec_agents is False:
+            values = v_nets[0](states)
+            fixed_log_probs = p_nets[0].get_log_prob(states, actions)
+        else:
+            for i in range(env.n_agents):
+                values.append(v_nets[i](states))
+                fixed_log_probs.append(p_nets[i].get_agent_i_log_prob(i, states, actions))
+            values = torch.stack(values)
+            values = torch.transpose(values,0,1)
+            fixed_log_probs = torch.stack(fixed_log_probs)
+            fixed_log_probs = torch.transpose(fixed_log_probs,0,1)
+
+        # print(values.shape)
+        # print(fixed_log_probs.shape)
+        # exit()
+        # fixed_log_probs = policy_net.get_log_prob(states, actions)
 
     """get advantage estimation from the trajectories"""
-    rewards_sum = torch.sum(rewards, dim=1)
-    # print(().shape)
-    # print(masks.shape)
-    # print(values.shape)
-    advantages, returns = estimate_advantages(rewards_sum, masks, values, args.gamma, args.tau, device)
-    # print(advantages)
-    # print(returns)
-    # exit()
+    advantages = []
+    returns = []
+    if args.dec_agents is False:
+        rewards_sum = torch.sum(rewards, dim=1)
+        # print(().shape)
+        # print(masks.shape)
+        # print(values.shape)
+        advantages, returns = estimate_advantages(rewards_sum, masks, values, args.gamma, args.tau, device)
+        # print(advantages.shape)
+        # print(returns.shape)
+        # exit()
+    else:
+        # print(rewards.shape)
+        # print(masks.shape)
+        for i in range(env.n_agents):
+            adv, ret = estimate_advantages(rewards[:,i], masks[:,i], values[:,i,:], args.gamma, args.tau, device)
+            advantages.append(adv)
+            returns.append(ret)
+        advantages = torch.stack(advantages)
+        advantages = torch.transpose(advantages,0,1)
+        returns = torch.stack(returns)
+        returns = torch.transpose(returns,0,1)
+        # print(advantages.shape, returns.shape)
+        # exit()
 
     """perform mini-batch PPO update"""
     optim_iter_num = int(math.ceil(states.shape[0] / optim_batch_size))
@@ -97,6 +146,8 @@ def update_params(batch, i_iter):
         perm = np.arange(states.shape[0])
         np.random.shuffle(perm)
         perm = LongTensor(perm).to(device)
+        # print(perm)
+        # exit()
 
         states, actions, returns, advantages, fixed_log_probs = \
             states[perm].clone(), actions[perm].clone(), returns[perm].clone(), advantages[perm].clone(), fixed_log_probs[perm].clone()
@@ -106,15 +157,64 @@ def update_params(batch, i_iter):
             states_b, actions_b, advantages_b, returns_b, fixed_log_probs_b = \
                 states[ind], actions[ind], advantages[ind], returns[ind], fixed_log_probs[ind]
 
-            ppo_step(policy_net, value_net, optimizer_policy, optimizer_value, 5, states_b, actions_b, returns_b,
-                     advantages_b, fixed_log_probs_b, args.clip_epsilon, args.l2_reg)
+            if args.dec_agents is False:
+                # print(states_b.shape)
+                # print(advantages_b.shape)
+                # exit()
+                ppo_step(p_nets[0], v_nets[0], p_opts[0], v_opts[0], 5, states_b, actions_b, returns_b,
+                        advantages_b, fixed_log_probs_b, args.clip_epsilon, args.l2_reg)
+            else:
+                # print(states_b.shape)
+                # print(actions_b.shape)
+                # print(returns_b[:,i].shape)
+                # print(advantages_b[:,i].shape)
+                # print(fixed_log_probs_b[:,i].shape)
+                # exit()
+                for i in range(env.n_agents):
+                    ppo_step(p_nets[i], v_nets[i], p_opts[i], v_opts[i], 5, states_b, actions_b, returns_b[:,i],
+                            advantages_b[:,i], fixed_log_probs_b[:,i], args.clip_epsilon, args.l2_reg, i)                    
+
+        # if args.dec_agents is False:
+        #     # print(states.shape)
+        #     # print(actions.shape)
+        #     # print(returns.shape)
+        #     # print(advantages.shape)
+        #     # print(fixed_log_probs[0].shape)
+        #     # exit()
+        #     states, actions, returns, advantages, fixed_log_probs = \
+        #         states[perm].clone(), actions[perm].clone(), returns[perm].clone(), advantages[perm].clone(), fixed_log_probs[perm].clone()
+        #     # print(states.shape)
+        #     # print(actions.shape)
+        #     # print(returns.shape)
+        #     # print(advantages.shape)
+        #     # print(fixed_log_probs.shape)
+        #     # exit()  
+
+        #     for i in range(optim_iter_num):
+        #         ind = slice(i * optim_batch_size, min((i + 1) * optim_batch_size, states.shape[0]))
+        #         states_b, actions_b, advantages_b, returns_b, fixed_log_probs_b = \
+        #             states[ind], actions[ind], advantages[ind], returns[ind], fixed_log_probs[0][ind]
+
+        #         ppo_step(p_nets[0], v_nets[0], p_opts[0], v_opts[0], 5, states_b, actions_b, returns_b,
+        #                 advantages_b, fixed_log_probs_b, args.clip_epsilon, args.l2_reg)
+        # else:
+        #     for i in range(env.n_agents):
+        #         states, actions, returns, advantages, fixed_log_probs = \
+        #             states[perm].clone(), actions[perm].clone(), returns[perm].clone(), advantages[perm].clone(), fixed_log_probs[perm].clone()
+        #         for i in range(optim_iter_num):
+        #             ind = slice(i * optim_batch_size, min((i + 1) * optim_batch_size, states.shape[0]))
+        #             states_b, actions_b, advantages_b, returns_b, fixed_log_probs_b = \
+        #                 states[ind], actions[ind], advantages[ind], returns[ind], fixed_log_probs[0][ind]
+
+        #             ppo_step(p_nets[0], v_nets[0], p_opts[0], v_opts[0], 5, states_b, actions_b, returns_b,
+        #                     advantages_b, fixed_log_probs_b, args.clip_epsilon, args.l2_reg)
 
 
 def main_loop():
     for i_iter in range(args.max_iter_num):
         """generate multiple trajectories that reach the minimum batch_size"""
         batch, log = agent.collect_samples(args.min_batch_size)
-        # exit()
+
         t0 = time.time()
         update_params(batch, i_iter)
         t1 = time.time()
@@ -126,11 +226,20 @@ def main_loop():
                 plotlogger.log(n=i_iter, r_min=log['min_reward'], r_max=log['max_reward'], r_avg=log['avg_reward'])
 
         if args.save_model_interval > 0 and (i_iter+1) % args.save_model_interval == 0:
-            to_device(torch.device('cpu'), policy_net, value_net)
+            for i in range(env.n_agents):
+                to_device(torch.device('cpu'), p_nets[i], v_nets[i])
+                if args.dec_agents is False:
+                    break
+            
             print("logging trained models.")
-            pickle.dump((policy_net, value_net, running_state),
+            pickle.dump((p_nets, v_nets, running_state),
                         open(os.path.join(assets_dir(), 'learned_models/{}_ppo.p'.format(args.env_name)), 'wb'))
-            to_device(device, policy_net, value_net)
+
+            for i in range(env.n_agents):
+                p_nets[i].to(device)
+                v_nets[i].to(device)
+                if args.dec_agents is False:
+                    break
 
         if args.log_plot is True and i_iter%args.log_plot_steps==0 and i_iter>=args.log_plot_steps:
             logplot_path = os.path.join(assets_dir(), 'learned_models/')

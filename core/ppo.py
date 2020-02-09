@@ -1,8 +1,9 @@
 import torch
+from utils.args import *
 
 
 def ppo_step(policy_net, value_net, optimizer_policy, optimizer_value, optim_value_iternum, states, actions,
-             returns, advantages, fixed_log_probs, clip_epsilon, l2_reg):
+             returns, advantages, fixed_log_probs, clip_epsilon, l2_reg, agent_i=None):
 
     """update critic"""
     for _ in range(optim_value_iternum):
@@ -17,7 +18,10 @@ def ppo_step(policy_net, value_net, optimizer_policy, optimizer_value, optim_val
         optimizer_value.step()
 
     """update policy"""
-    log_probs = policy_net.get_log_prob(states, actions)
+    if args.dec_agents is False:
+        log_probs = policy_net.get_log_prob(states, actions)
+    else:
+        log_probs = policy_net.get_agent_i_log_prob(agent_i, states, actions)
     ratio = torch.exp(log_probs - fixed_log_probs)
     surr1 = ratio * advantages
     surr2 = torch.clamp(ratio, 1.0 - clip_epsilon, 1.0 + clip_epsilon) * advantages
