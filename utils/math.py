@@ -17,4 +17,5 @@ def normal_log_density(x, mean, log_std, std):
 def set_init(layers):
     for layer in layers:
         torch.nn.init.xavier_normal_(layer.weight)
+        # torch.nn.init.kaiming_normal_(layer.weight, mode='fan_in', nonlinearity='relu')
         torch.nn.init.constant_(layer.bias, 0.0)
