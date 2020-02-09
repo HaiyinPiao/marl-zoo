@@ -63,7 +63,7 @@ policy_net.to(device)
 value_net.to(device)
 
 optimizer_policy = torch.optim.Adam(policy_net.parameters(), lr=args.learning_rate)
-optimizer_value = torch.optim.Adam(value_net.parameters(), lr=args.learning_rate)
+optimizer_value = torch.optim.Adam(value_net.parameters(), lr=args.learning_rate*2)
 
 """create agent"""
 agent = Agent(env, policy_net, device, running_state=running_state, render=args.render, num_threads=args.num_threads)
@@ -106,7 +106,7 @@ def update_params(batch, i_iter):
             states_b, actions_b, advantages_b, returns_b, fixed_log_probs_b = \
                 states[ind], actions[ind], advantages[ind], returns[ind], fixed_log_probs[ind]
 
-            ppo_step(policy_net, value_net, optimizer_policy, optimizer_value, 1, states_b, actions_b, returns_b,
+            ppo_step(policy_net, value_net, optimizer_policy, optimizer_value, 5, states_b, actions_b, returns_b,
                      advantages_b, fixed_log_probs_b, args.clip_epsilon, args.l2_reg)
 
 

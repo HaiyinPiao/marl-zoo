@@ -5,12 +5,15 @@ import torch
 from utils.math import *
 from utils.args import *
 
-sys.path.append(os.getcwd()+'/../transformer-encoder/')
-sys.path.append(os.getcwd()+'/../transformer-encoder/transformer/')
+# sys.path.append(os.getcwd()+'/../transformer-encoder/')
+# sys.path.append(os.getcwd()+'/../transformer-encoder/transformer/')
 
-import transformer.Constants as Constants
-from transformer.Layers import EncoderLayer
-from transformer.Models import Transformer, Encoder
+# import transformer.Constants as Constants
+# from transformer.Layers import EncoderLayer
+# from transformer.Models import Transformer, Encoder
+
+log_protect = 1e-5
+multinomial_protect = 1e-10
 
 class DiscretePolicy(nn.Module):
     def __init__(self, n, state_dim, action_num, hidden_size=[128], activation='tanh'):
@@ -29,13 +32,15 @@ class DiscretePolicy(nn.Module):
 
         # utilizing Transformer Encoder as hidden for Relational-MARL.
         if args.rrl is True:
-            self.encoder_stacks = Encoder(d_model=state_dim, d_inner=64, d_word_vec=state_dim, n_position=self.n,
-                n_layers=2, n_head=4, d_k=16, d_v=16, dropout=0.05)
+            # self.encoder_stacks = Encoder(d_model=state_dim, d_inner=64, d_word_vec=state_dim, n_position=self.n,
+            #     n_layers=2, n_head=6, d_k=16, d_v=16, dropout=0.05)
+            self.encoder_layer = nn.TransformerEncoderLayer(d_model=state_dim, nhead=1)
+            self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=4)
 
         # mlp as hidden.
         # only use 1 layer.
         self.affine_layers = nn.ModuleList()
-        last_dim = state_dim*n
+        last_dim = state_dim if args.rrl is True else state_dim*n
         for nh in hidden_size:
             self.affine_layers.append(nn.Linear(last_dim, nh) )
             last_dim = nh
@@ -52,14 +57,21 @@ class DiscretePolicy(nn.Module):
 
     def forward(self, x):
         action_prob = []
-        # print(x)
+        # print(x.shape)
 
         # utilizing Transformer Encoder as hidden for Relational-MARL.
         if args.rrl is True:
-            x, _ = self.encoder_stacks.forward(x, src_mask = None)
+            # x, _ = self.encoder_stacks.forward(x, src_mask = None)
+            x = self.transformer_encoder(x)
+            # # max aggregation.
+            # print(x.shape)
+
+            # x = (torch.max(x,1)).values
+            x = torch.sum(x,1)
+            # print(x.shape)
         # mlp as hidden.
         x = x.view(x.shape[0],-1)
-        # print(x)
+        # print(x.shape)
         # exit()
 
         for l in self.affine_layers:
@@ -81,6 +93,7 @@ class DiscretePolicy(nn.Module):
         actions = []
         action_prob = self.forward(x)
         for i in range(self.n):
+            action_prob[i] += multinomial_protect
             action = action_prob[i].multinomial(1)
             actions.append(action.item())
         # print(actions)
@@ -111,7 +124,7 @@ class DiscretePolicy(nn.Module):
         # print(action_prob[0], actions[0])
 
         # ******************gather all action heads probs********************
-        choice = action_prob.gather(2, actions.long())
+        choice = action_prob.gather(2, actions.long())+log_protect
         # print(choice.shape, choice)
         choice = torch.prod(choice, dim=1)
         # print(choice.shape, choice)
