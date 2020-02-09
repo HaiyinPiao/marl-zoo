@@ -77,9 +77,6 @@ for i in range(env.n_agents):
     if args.dec_agents is False:
         break
 
-# print(p_nets, v_nets)
-# exit()
-
 """create agent"""
 agent = Agent(env, p_nets, device, running_state=running_state, render=args.render, num_threads=args.num_threads)
 
@@ -93,10 +90,6 @@ def update_params(batch, i_iter):
     values = []
     fixed_log_probs = []
     with torch.no_grad():
-        # print(states.shape)
-        # print(actions.shape)
-        # print(masks.shape)
-        # exit()
         if args.dec_agents is False:
             values = v_nets[0](states)
             fixed_log_probs = p_nets[0].get_log_prob(states, actions)
@@ -109,26 +102,13 @@ def update_params(batch, i_iter):
             fixed_log_probs = torch.stack(fixed_log_probs)
             fixed_log_probs = torch.transpose(fixed_log_probs,0,1)
 
-        # print(values.shape)
-        # print(fixed_log_probs.shape)
-        # exit()
-        # fixed_log_probs = policy_net.get_log_prob(states, actions)
-
     """get advantage estimation from the trajectories"""
     advantages = []
     returns = []
     if args.dec_agents is False:
         rewards_sum = torch.sum(rewards, dim=1)
-        # print(().shape)
-        # print(masks.shape)
-        # print(values.shape)
         advantages, returns = estimate_advantages(rewards_sum, masks, values, args.gamma, args.tau, device)
-        # print(advantages.shape)
-        # print(returns.shape)
-        # exit()
     else:
-        # print(rewards.shape)
-        # print(masks.shape)
         for i in range(env.n_agents):
             adv, ret = estimate_advantages(rewards[:,i], masks[:,i], values[:,i,:], args.gamma, args.tau, device)
             advantages.append(adv)
@@ -137,8 +117,6 @@ def update_params(batch, i_iter):
         advantages = torch.transpose(advantages,0,1)
         returns = torch.stack(returns)
         returns = torch.transpose(returns,0,1)
-        # print(advantages.shape, returns.shape)
-        # exit()
 
     """perform mini-batch PPO update"""
     optim_iter_num = int(math.ceil(states.shape[0] / optim_batch_size))
@@ -146,8 +124,6 @@ def update_params(batch, i_iter):
         perm = np.arange(states.shape[0])
         np.random.shuffle(perm)
         perm = LongTensor(perm).to(device)
-        # print(perm)
-        # exit()
 
         states, actions, returns, advantages, fixed_log_probs = \
             states[perm].clone(), actions[perm].clone(), returns[perm].clone(), advantages[perm].clone(), fixed_log_probs[perm].clone()
@@ -158,56 +134,12 @@ def update_params(batch, i_iter):
                 states[ind], actions[ind], advantages[ind], returns[ind], fixed_log_probs[ind]
 
             if args.dec_agents is False:
-                # print(states_b.shape)
-                # print(advantages_b.shape)
-                # exit()
                 ppo_step(p_nets[0], v_nets[0], p_opts[0], v_opts[0], 5, states_b, actions_b, returns_b,
                         advantages_b, fixed_log_probs_b, args.clip_epsilon, args.l2_reg)
             else:
-                # print(states_b.shape)
-                # print(actions_b.shape)
-                # print(returns_b[:,i].shape)
-                # print(advantages_b[:,i].shape)
-                # print(fixed_log_probs_b[:,i].shape)
-                # exit()
                 for i in range(env.n_agents):
                     ppo_step(p_nets[i], v_nets[i], p_opts[i], v_opts[i], 5, states_b, actions_b, returns_b[:,i],
                             advantages_b[:,i], fixed_log_probs_b[:,i], args.clip_epsilon, args.l2_reg, i)                    
-
-        # if args.dec_agents is False:
-        #     # print(states.shape)
-        #     # print(actions.shape)
-        #     # print(returns.shape)
-        #     # print(advantages.shape)
-        #     # print(fixed_log_probs[0].shape)
-        #     # exit()
-        #     states, actions, returns, advantages, fixed_log_probs = \
-        #         states[perm].clone(), actions[perm].clone(), returns[perm].clone(), advantages[perm].clone(), fixed_log_probs[perm].clone()
-        #     # print(states.shape)
-        #     # print(actions.shape)
-        #     # print(returns.shape)
-        #     # print(advantages.shape)
-        #     # print(fixed_log_probs.shape)
-        #     # exit()  
-
-        #     for i in range(optim_iter_num):
-        #         ind = slice(i * optim_batch_size, min((i + 1) * optim_batch_size, states.shape[0]))
-        #         states_b, actions_b, advantages_b, returns_b, fixed_log_probs_b = \
-        #             states[ind], actions[ind], advantages[ind], returns[ind], fixed_log_probs[0][ind]
-
-        #         ppo_step(p_nets[0], v_nets[0], p_opts[0], v_opts[0], 5, states_b, actions_b, returns_b,
-        #                 advantages_b, fixed_log_probs_b, args.clip_epsilon, args.l2_reg)
-        # else:
-        #     for i in range(env.n_agents):
-        #         states, actions, returns, advantages, fixed_log_probs = \
-        #             states[perm].clone(), actions[perm].clone(), returns[perm].clone(), advantages[perm].clone(), fixed_log_probs[perm].clone()
-        #         for i in range(optim_iter_num):
-        #             ind = slice(i * optim_batch_size, min((i + 1) * optim_batch_size, states.shape[0]))
-        #             states_b, actions_b, advantages_b, returns_b, fixed_log_probs_b = \
-        #                 states[ind], actions[ind], advantages[ind], returns[ind], fixed_log_probs[0][ind]
-
-        #             ppo_step(p_nets[0], v_nets[0], p_opts[0], v_opts[0], 5, states_b, actions_b, returns_b,
-        #                     advantages_b, fixed_log_probs_b, args.clip_epsilon, args.l2_reg)
 
 
 def main_loop():

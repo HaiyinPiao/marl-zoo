@@ -11,7 +11,6 @@ def collect_samples(pid, queue, env, p_nets, custom_reward,
     torch.randn(pid)
     log = dict()
     memory = Memory()
-    # memories = [Memory()]*env.n_agents
     team_reward = 0.0
     if args.dec_agents is True:
         reward_episodes = [0.0]*env.n_agents
@@ -33,16 +32,9 @@ def collect_samples(pid, queue, env, p_nets, custom_reward,
             reward_episodes = [0.0]*env.n_agents
 
         for t in range(10000):
-            # print(state)
-            
-            # state = np.array(state).reshape(-1)
-            # print(state)
-            
             state_var = tensor(state).unsqueeze(0)
             action = []
-            # state_var = tensor(state)
-            # print(state_var)
-            # print(exit())
+
             with torch.no_grad():
                 if mean_action:
                     action = policy(state_var)[0][0].numpy()
@@ -51,22 +43,11 @@ def collect_samples(pid, queue, env, p_nets, custom_reward,
                         action += p_nets[i].select_action(state_var)
                         if args.dec_agents is False:
                             break
-            # action = int(action) if policy.is_disc_action else action.astype(np.float64)
-            # print(action)
             next_state, reward, done, _ = env.step(action)
-            # print(next_state.shape, reward.shape)
-            # print(reward)
-            # print(sum(reward))
-            # exit()
-            # print(done)
-            # exit()
             team_reward += sum(reward)
             if args.dec_agents is True:
                 reward_episodes += reward
                 reward_episodes = [i + j for i, j in zip(reward_episodes, reward)]
-            # print(reward_episodes)
-            # print(team_reward)
-            # exit()
 
             if running_state is not None:
                 next_state = running_state(next_state)
@@ -81,15 +62,12 @@ def collect_samples(pid, queue, env, p_nets, custom_reward,
                 mask = 0 if all(done) else 1
             else:
                 mask = [bool(1-e) for e in done]
-            # print(mask, done)
-            # exit()
 
             memory.push(state, action, mask, next_state, reward)
 
             if render:
                 env.render()
-            # if done:
-            #     break
+
             if all(done):
                 break
             

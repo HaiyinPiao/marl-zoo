@@ -18,10 +18,6 @@ def estimate_advantages(rewards, masks, values, gamma, tau, device):
         prev_advantage = advantages[i, 0]
 
     returns = values + advantages
-    # print(advantages)
-    # print(advantages.mean())
-    # print(advantages.std())
-    # advantages = (advantages - advantages.mean()) / advantages.std()
-    # print(advantages)
+    advantages = (advantages - advantages.mean()) / advantages.std()
     advantages, returns = to_device(device, advantages, returns)
     return advantages, returns
