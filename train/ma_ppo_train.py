@@ -178,6 +178,7 @@ def main_loop():
             with open(os.path.join(logplot_path+"logplot"+str(datetime.datetime.now())+".pkl"), "wb") as f: pickle.dump(plotlogger._log, f, pickle.HIGHEST_PROTOCOL)
             print("plot log succeed.")
             args.log_plot = False
+            exit()
 
         """clean up gpu memory"""
         torch.cuda.empty_cache()

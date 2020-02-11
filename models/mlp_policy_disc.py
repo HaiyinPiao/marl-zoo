@@ -16,7 +16,7 @@ log_protect = 1e-5
 multinomial_protect = 1e-10
 
 class DiscretePolicy(nn.Module):
-    def __init__(self, dec_agents, n, state_dim, action_num, hidden_size=[250,150,100], activation='tanh'):
+    def __init__(self, dec_agents, n, state_dim, action_num, hidden_size=[400,200], activation='relu'):
         super().__init__()
         self.dec_agents = dec_agents
         self.n = n
@@ -33,13 +33,14 @@ class DiscretePolicy(nn.Module):
 
         # utilizing Transformer Encoder as hidden for Relational-MARL.
         if args.rrl is True:
-            self.encoder_stacks = Encoder(d_model=state_dim, d_inner=64, d_word_vec=state_dim, n_position=self.n,
-                n_layers=6, n_head=8, d_k=16, d_v=16, dropout=0.1)
+            self.encoder_stacks = Encoder(d_model=state_dim, d_inner=256, d_word_vec=state_dim, n_position=self.n,
+                n_layers=4, n_head=6, d_k=32, d_v=32, dropout=0.1)
 
         # mlp as hidden.
         self.affine_layers = nn.ModuleList()
-        # last_dim = state_dim if args.rrl is True else state_dim*n
-        last_dim = state_dim*n
+        last_dim = state_dim if args.rrl is True else state_dim*n
+        # last_dim = state_dim*n
+
         for nh in hidden_size:
             self.affine_layers.append(nn.Linear(last_dim, nh) )
             last_dim = nh
@@ -63,8 +64,11 @@ class DiscretePolicy(nn.Module):
         if args.rrl is True:
             x, _ = self.encoder_stacks.forward(x, src_mask = None)
 
-        # mlp as hidden.
-        x = x.view(x.shape[0],-1)
+        if args.rrl is True:
+            x = torch.sum(x, dim=1)
+        else:
+            # mlp as hidden.
+            x = x.view(x.shape[0],-1)
 
         for l in self.affine_layers:
             x = self.activation(l(x))        
