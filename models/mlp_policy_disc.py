@@ -16,7 +16,7 @@ log_protect = 1e-5
 multinomial_protect = 1e-10
 
 class DiscretePolicy(nn.Module):
-    def __init__(self, dec_agents, n, state_dim, action_num, hidden_size=[400,200], activation='relu'):
+    def __init__(self, dec_agents, n, state_dim, action_num, hidden_size=[200,100], activation='relu'):
         super().__init__()
         self.dec_agents = dec_agents
         self.n = n
@@ -33,12 +33,22 @@ class DiscretePolicy(nn.Module):
 
         # utilizing Transformer Encoder as hidden for Relational-MARL.
         if args.rrl is True:
-            self.encoder_stacks = Encoder(d_model=state_dim, d_inner=256, d_word_vec=state_dim, n_position=self.n,
-                n_layers=4, n_head=6, d_k=32, d_v=32, dropout=0.1)
+            # self.encoder_stacks = Encoder(d_model=state_dim, d_inner=256, d_word_vec=state_dim, n_position=self.n,
+            #     n_layers=4, n_head=6, d_k=32, d_v=32, dropout=0.1)
+            self.embed_dim = 240
+            self.num_heads = 6
+            self.attn_depth = 2
+            self.attn_layers = nn.ModuleList()
+            for _ in range(self.attn_depth):
+                self.attn_layers.append( nn.MultiheadAttention(embed_dim=self.embed_dim, num_heads=self.num_heads) )
+            self.w_k = nn.Linear(state_dim, self.embed_dim)
+            self.w_v = nn.Linear(state_dim, self.embed_dim)
+            self.w_q = nn.Linear(state_dim, self.embed_dim)
+            set_init([self.w_k, self.w_v, self.w_q])
 
         # mlp as hidden.
         self.affine_layers = nn.ModuleList()
-        last_dim = state_dim if args.rrl is True else state_dim*n
+        last_dim = self.embed_dim*n if args.rrl is True else state_dim*n
         # last_dim = state_dim*n
 
         for nh in hidden_size:
@@ -62,10 +72,23 @@ class DiscretePolicy(nn.Module):
 
         # utilizing Transformer Encoder as hidden for Relational-MARL.
         if args.rrl is True:
-            x, _ = self.encoder_stacks.forward(x, src_mask = None)
+            # x, _ = self.encoder_stacks.forward(x, src_mask = None)
+            x = x.transpose(0, 1)
+            k_x = self.w_k(x)
+            v_x = self.w_v(x)
+            q_x = self.w_q(x)
+            for l in self.attn_layers:
+                x, _ = l(q_x, k_x, v_x)
+                q_x = x
+                k_x = x
+                v_x = x
+            # x, _ = self.attn_layer(q_x, k_x, v_x)
+            x = x.transpose(0, 1)
 
         if args.rrl is True:
-            x = torch.sum(x, dim=1)
+            x = x.contiguous().view(x.shape[0],-1)
+            # x = torch.sum(x, dim=1)
+            # x, _ = torch.max(x, 1)
         else:
             # mlp as hidden.
             x = x.view(x.shape[0],-1)
