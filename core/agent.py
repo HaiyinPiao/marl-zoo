@@ -4,10 +4,11 @@ from utils.torch import *
 from utils.args import *
 import math
 import time
+import random
 
 
 def collect_samples(pid, queue, env, p_nets, custom_reward,
-                    mean_action, render, running_state, min_batch_size):
+                    mean_action, render, running_state, min_batch_size, rsi_mem_prev=None):
     torch.randn(pid)
     log = dict()
     memory = Memory()
@@ -24,7 +25,17 @@ def collect_samples(pid, queue, env, p_nets, custom_reward,
     num_episodes = 0
 
     while num_steps < min_batch_size:
-        state = env.reset()
+        if args.rsi is True and rsi_mem_prev is not None:
+            # randomized starting point.
+            sp = rsi_mem_prev.rsi_state
+            rs = random.sample(sp, 1)
+            rs = rs[0]
+            # print(rs)
+            # exit()
+            state = env.rsi_reset({0:rs[0],1:rs[1],2:rs[2],3:rs[3]})
+        else:
+            state = env.reset()
+
         if running_state is not None:
             state = running_state(state)
         team_reward = 0
@@ -63,7 +74,10 @@ def collect_samples(pid, queue, env, p_nets, custom_reward,
             else:
                 mask = [bool(1-e) for e in done]
 
-            memory.push(state, action, mask, next_state, reward)
+            if args.rsi is True:
+                memory.push(state, action, mask, next_state, reward, env.agent_pos)
+            else:
+                memory.push(state, action, mask, next_state, reward)
 
             if render:
                 env.render()
@@ -128,7 +142,7 @@ class Agent:
         self.render = render
         self.num_threads = num_threads
 
-    def collect_samples(self, min_batch_size):
+    def collect_samples(self, min_batch_size, rsi_mem_prev=None):
         t_start = time.time()
         for i in range(self.env.n_agents):
             to_device(torch.device('cpu'), self.p_nets[i])
@@ -140,13 +154,13 @@ class Agent:
 
         for i in range(self.num_threads-1):
             worker_args = (i+1, queue, self.env, self.p_nets, self.custom_reward, self.mean_action,
-                           False, self.running_state, thread_batch_size)
+                           False, self.running_state, thread_batch_size, rsi_mem_prev)
             workers.append(multiprocessing.Process(target=collect_samples, args=worker_args))
         for worker in workers:
             worker.start()
 
         memory, log = collect_samples(0, None, self.env, self.p_nets, self.custom_reward, self.mean_action,
-                                      self.render, self.running_state, thread_batch_size)
+                                      self.render, self.running_state, thread_batch_size, rsi_mem_prev)
 
         worker_logs = [None] * len(workers)
         worker_memories = [None] * len(workers)

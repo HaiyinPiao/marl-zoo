@@ -2,7 +2,7 @@ import argparse
 import time
 
 parser = argparse.ArgumentParser(description='PyTorch PPO example')
-parser.add_argument('--env-name', default="PredatorPrey7x7-v0", metavar='G',
+parser.add_argument('--env-name', default="Switch4-v0", metavar='G',
                     help='name of the environment to run')
 parser.add_argument('--model-path', metavar='G',
                     help='path of pre-trained model')
@@ -24,7 +24,7 @@ parser.add_argument('--num-threads', type=int, default=8, metavar='N',
                     help='number of threads for agent (default: 4)')
 parser.add_argument('--seed', type=int, default=int(time.time()), metavar='N',
                     help='random seed (default: 1)')
-parser.add_argument('--min-batch-size', type=int, default=2000, metavar='N',
+parser.add_argument('--min-batch-size', type=int, default=4800, metavar='N',
                     help='minimal batch size per PPO update (default: 2048)')
 parser.add_argument('--max-iter-num', type=int, default=50000, metavar='N',
                     help='maximal number of main iterations (default: 500)')
@@ -35,10 +35,12 @@ parser.add_argument('--save-model-interval', type=int, default=5, metavar='N',
 parser.add_argument('--gpu-index', type=int, default=0, metavar='N')
 parser.add_argument('--log-plot', type=bool, default=True, metavar='N')
 parser.add_argument('--log-plot-steps', type=int, default=50, metavar='N')
-parser.add_argument('--rrl', type=bool, default=True, metavar='N')
+parser.add_argument('--rrl', type=bool, default=False, metavar='N')
 parser.add_argument('--dec-agents', type=bool, default=False, metavar='N')
+# Now RSI start only works for MA-GYM:Switch4-v0 environment.
+parser.add_argument('--rsi', type=bool, default=True, metavar='N')
 args = parser.parse_args()
 
 # optimization epoch number and batch size for PPO
 optim_epochs = 10
-optim_batch_size = int(args.min_batch_size/4)
+optim_batch_size = int(args.min_batch_size/1)

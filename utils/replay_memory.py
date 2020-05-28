@@ -1,10 +1,14 @@
 from collections import namedtuple
 import random
+from utils.args import *
 
 # Taken from
 # https://github.com/pytorch/tutorials/blob/master/Reinforcement%20(Q-)Learning%20with%20PyTorch.ipynb
-
-Transition = namedtuple('Transition', ('state', 'action', 'mask', 'next_state',
+if args.rsi is True:
+    Transition = namedtuple('Transition', ('state', 'action', 'mask', 'next_state',
+                                       'reward','rsi_state'))    
+else:
+    Transition = namedtuple('Transition', ('state', 'action', 'mask', 'next_state',
                                        'reward'))
 
 

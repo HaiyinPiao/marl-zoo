@@ -6,6 +6,7 @@ import sys
 import pickle
 import time
 import datetime
+import copy
 os.environ["OMP_NUM_THREADS"] = "1"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -36,6 +37,8 @@ torch.set_default_dtype(dtype)
 device = torch.device('cuda', index=args.gpu_index) if torch.cuda.is_available() else torch.device('cpu')
 if torch.cuda.is_available():
     torch.cuda.set_device(args.gpu_index)
+
+
 
 """environment"""
 env = gym.make(args.env_name)
@@ -143,9 +146,15 @@ def update_params(batch, i_iter):
 
 
 def main_loop():
+    # RSI randomization from previous sampling replay memory
+    rsi_mem_prev = None
+
     for i_iter in range(args.max_iter_num):
         """generate multiple trajectories that reach the minimum batch_size"""
-        batch, log = agent.collect_samples(args.min_batch_size)
+        batch, log = agent.collect_samples(args.min_batch_size, rsi_mem_prev)
+
+        if args.rsi is True:
+            rsi_mem_prev = copy.copy(batch)
 
         t0 = time.time()
         update_params(batch, i_iter)

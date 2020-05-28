@@ -65,6 +65,7 @@ for i in range(env.n_agents):
         break
 
 state = env.reset()
+# state = env.rsi_reset({0:[0,0],1:[0,1],2:[1,0],3:[1,1]})
 team_reward = 0
 
 for t in range(10000):
