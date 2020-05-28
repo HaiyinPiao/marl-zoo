@@ -38,12 +38,15 @@ class DiscretePolicy(nn.Module):
             self.embed_dim = 240
             self.num_heads = 6
             self.attn_depth = 2
+            # for embedding #
+            self.token_embed_layer = nn.Linear(state_dim, self.embed_dim)
             self.attn_layers = nn.ModuleList()
             for _ in range(self.attn_depth):
                 self.attn_layers.append( nn.MultiheadAttention(embed_dim=self.embed_dim, num_heads=self.num_heads) )
-            self.w_k = nn.Linear(state_dim, self.embed_dim)
-            self.w_v = nn.Linear(state_dim, self.embed_dim)
-            self.w_q = nn.Linear(state_dim, self.embed_dim)
+            self.w_k = nn.Linear(self.embed_dim, self.embed_dim)
+            self.w_v = nn.Linear(self.embed_dim, self.embed_dim)
+            self.w_q = nn.Linear(self.embed_dim, self.embed_dim)
+            set_init([self.token_embed_layer])
             set_init([self.w_k, self.w_v, self.w_q])
 
         # mlp as hidden.
@@ -72,8 +75,10 @@ class DiscretePolicy(nn.Module):
 
         # utilizing Transformer Encoder as hidden for Relational-MARL.
         if args.rrl is True:
-            # x, _ = self.encoder_stacks.forward(x, src_mask = None)
             x = x.transpose(0, 1)
+            x = self.token_embed_layer(x)
+            # x, _ = self.encoder_stacks.forward(x, src_mask = None)
+            # x = x.transpose(0, 1)
             k_x = self.w_k(x)
             v_x = self.w_v(x)
             q_x = self.w_q(x)

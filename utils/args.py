@@ -35,7 +35,7 @@ parser.add_argument('--save-model-interval', type=int, default=5, metavar='N',
 parser.add_argument('--gpu-index', type=int, default=0, metavar='N')
 parser.add_argument('--log-plot', type=bool, default=True, metavar='N')
 parser.add_argument('--log-plot-steps', type=int, default=50, metavar='N')
-parser.add_argument('--rrl', type=bool, default=False, metavar='N')
+parser.add_argument('--rrl', type=bool, default=True, metavar='N')
 parser.add_argument('--dec-agents', type=bool, default=False, metavar='N')
 # Now RSI start only works for MA-GYM:Switch4-v0 environment.
 parser.add_argument('--rsi', type=bool, default=True, metavar='N')
